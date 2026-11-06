@@ -36,3 +36,12 @@ export function addDays(date: string | Date, days: number): Date {
   d.setDate(d.getDate() + days);
   return d;
 }
+
+const money0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const moneyCompact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+export function formatMoney(v: number | string | null | undefined, compact = false): string {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "—";
+  return compact ? moneyCompact.format(n) : money0.format(n);
+}

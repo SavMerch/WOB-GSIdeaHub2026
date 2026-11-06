@@ -2,9 +2,11 @@ import * as React from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { matchPath, useLocation } from "react-router";
 import { useAuth } from "./useAuth";
+import { useUnits } from "./useUnit";
 
-export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline";
+export type ConnectionState = "idle" | "connecting" | "live" | "reconnecting" | "offline";
 
 interface RealtimeState {
   state: ConnectionState;
@@ -25,18 +27,26 @@ const TABLE_KEYS: Record<string, string[][]> = {
   categories: [["categories"]],
   workspace_settings: [["settings"]],
   workspace_memberships: [["admin-people"], ["admin-overview"], ["me"]],
+  bd_items: [["bd"], ["home"], ["comments"]],
+  unit_memberships: [["units"], ["my-units"], ["members"]],
+  business_units: [["units"]],
 };
 
 /**
- * One private channel per signed-in member ('workspace:main'). Joining is
- * authorized by RLS on realtime.messages; row changes are filtered by each
- * table's RLS, so a participant only ever receives rows they could select.
+ * One private channel for the business unit being viewed ('unit:<id>').
+ * Joining is authorized by RLS on realtime.messages (can_join_topic); row
+ * changes are filtered by each table's RLS, so a participant only ever
+ * receives rows from units they can see.
  * Presence carries only the username — never what page someone is on, so
  * it can't be correlated with anonymous posts.
  */
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { session, profile, membership, signOut } = useAuth();
   const qc = useQueryClient();
+  const loc = useLocation();
+  const { data: units } = useUnits();
+  const slug = matchPath("/u/:unit/*", loc.pathname)?.params.unit;
+  const unitId = units?.find((u) => u.slug === slug)?.id;
   const [state, setState] = React.useState<ConnectionState>("connecting");
   const [online, setOnline] = React.useState<RealtimeState["online"]>([]);
   const active = membership?.status === "active";
@@ -44,6 +54,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!uid || !active || !profile) return;
+    if (!unitId) {
+      setState("idle");
+      setOnline([]);
+      return;
+    }
+    setState("connecting");
     let channel: RealtimeChannel | null = null;
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -64,7 +80,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const connect = async (attempt = 0) => {
       await supabase.realtime.setAuth(session!.access_token);
       if (cancelled) return;
-      const ch = supabase.channel("workspace:main", { config: { private: true, presence: { key: uid } } });
+      const ch = supabase.channel(`unit:${unitId}`, { config: { private: true, presence: { key: uid } } });
       channel = ch;
       for (const table of Object.keys(TABLE_KEYS)) {
         channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
@@ -115,7 +131,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (channel) supabase.removeChannel(channel);
     };
     // access_token intentionally excluded: supabase-js re-auths the socket on refresh.
-  }, [uid, active, profile?.username]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [uid, active, profile?.username, unitId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <Ctx.Provider value={{ state, online }}>{children}</Ctx.Provider>;
 }

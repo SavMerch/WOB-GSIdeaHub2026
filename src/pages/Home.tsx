@@ -1,11 +1,12 @@
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CalendarClock, Ear, Hammer, Heart, MessagesSquare, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Briefcase, CalendarClock, Ear, Hammer, Heart, MessagesSquare, Sparkles, Users } from "lucide-react";
 import { rpc } from "@/lib/api";
 import { DASHBOARDS, dashboardByN, itemHref } from "@/lib/dashboards";
 import { addDays, cn, formatDate, timeAgo } from "@/lib/utils";
 import { useActivity, usePrioritySummary, useRecentContributions, useRoadmap, useTopContributions } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { unitPath, useUnit } from "@/hooks/useUnit";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { PresenceStrip } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/collab/common";
@@ -16,6 +17,7 @@ interface HomeSummary {
   contributions_by_dashboard: Record<string, number>;
   roadmap_by_status: Record<string, number>;
   themes: { label: string; board: string; n: number }[];
+  bd_by_kind: Record<string, number>;
   roadmap_start_date: string;
 }
 
@@ -29,14 +31,20 @@ function SynthesisNote() {
 
 export default function Home() {
   const { profile, settings } = useAuth();
-  const summary = useQuery({ queryKey: ["home", "summary"], queryFn: () => rpc<HomeSummary>("get_home_summary"), refetchInterval: 60_000 });
-  const priorities = usePrioritySummary();
-  const potential = useTopContributions(["grow", "known_for"], 4);
-  const hearing = useTopContributions(["honest_working", "honest_unsaid", "barriers"], 4);
-  const recent = useRecentContributions(5, "created_at");
-  const discussions = useRecentContributions(5, "last_activity_at");
-  const roadmap = useRoadmap();
-  const activity = useActivity(12);
+  const unit = useUnit();
+  const at = (sub: string) => unitPath(unit.slug, sub);
+  const summary = useQuery({
+    queryKey: ["home", "summary", unit.id],
+    queryFn: () => rpc<HomeSummary>("get_home_summary", { p_unit_id: unit.id }),
+    refetchInterval: 60_000,
+  });
+  const priorities = usePrioritySummary(unit.id);
+  const potential = useTopContributions(unit.id, ["grow", "known_for"], 4);
+  const hearing = useTopContributions(unit.id, ["honest_working", "honest_unsaid", "barriers"], 4);
+  const recent = useRecentContributions(unit.id, 5, "created_at");
+  const discussions = useRecentContributions(unit.id, 5, "last_activity_at");
+  const roadmap = useRoadmap(unit.id);
+  const activity = useActivity(unit.id, 12);
 
   const s = summary.data;
   const working = (roadmap.data ?? []).filter((r) => ["agreed", "in_progress"].includes(r.status));
@@ -58,7 +66,7 @@ export default function Home() {
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
-          <p className="eyebrow mb-2 text-brand">Where We're Headed</p>
+          <p className="eyebrow mb-2 text-brand">Where We're Headed · {unit.name}</p>
           <h1 className="text-2xl font-semibold sm:text-3xl">Welcome back, {profile?.username}.</h1>
           <p className="mt-2 text-ink-soft">{settings?.welcome_message}</p>
           <p className="mt-1 text-sm text-muted">A picture of what we're building together.</p>
@@ -72,7 +80,7 @@ export default function Home() {
       {/* Five questions */}
       <nav aria-label="The five questions" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {DASHBOARDS.map((d) => (
-          <Link key={d.n} to={d.path} className={cn("group flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 transition-shadow hover:shadow-[var(--shadow-pop)]")}>
+          <Link key={d.n} to={at(d.path)} className={cn("group flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-4 transition-shadow hover:shadow-[var(--shadow-pop)]")}>
             <span className={cn("grid size-8 place-items-center rounded-lg", d.accent.soft, d.accent.text)}><d.icon className="size-4" aria-hidden /></span>
             <span className="text-sm font-medium leading-snug">{d.question}</span>
             <span className="flex items-center justify-between text-xs text-muted">
@@ -82,6 +90,14 @@ export default function Home() {
           </Link>
         ))}
       </nav>
+
+      <Link to={at("planning")} className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line bg-surface px-5 py-4 transition-shadow hover:shadow-[var(--shadow-pop)] sm:flex-row sm:items-center">
+        <span className="flex items-center gap-2 font-medium"><Briefcase className="size-4 text-brand" aria-hidden /> 2027 Business Development</span>
+        <span className="text-sm text-muted sm:ml-auto">
+          {s?.bd_by_kind?.client ?? 0} clients · {s?.bd_by_kind?.association ?? 0} associations · {s?.bd_by_kind?.conference ?? 0} conferences
+        </span>
+        <ArrowRight className="hidden size-4 text-muted sm:block" aria-hidden />
+      </Link>
 
       {/* Four primary cards */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -101,7 +117,7 @@ export default function Home() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {hearing.data!.map((c) => (
-                  <li key={c.id}><Link className="text-sm hover:underline" to={itemHref("contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
+                  <li key={c.id}><Link className="text-sm hover:underline" to={itemHref(unit.slug, "contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
                     {c.resonates_count > 0 && <span className="ml-2 text-xs text-muted">{c.resonates_count} resonate</span>}</li>
                 ))}
               </ul>
@@ -117,7 +133,7 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {prioritiesWaiting || topPriorities.length === 0 ? (
-              <Empty>Group priorities appear once at least {settings?.privacy_threshold ?? 3} people have completed the ranking in <Link className="text-brand hover:underline" to="/matters">What matters most to us?</Link></Empty>
+              <Empty>Group priorities appear once at least {settings?.privacy_threshold ?? 3} people have completed the ranking in <Link className="text-brand hover:underline" to={at("matters")}>What matters most to us?</Link></Empty>
             ) : (
               <ol className="flex flex-col gap-3">
                 {topPriorities.map((p, i) => (
@@ -139,12 +155,12 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {(potential.data ?? []).length === 0 ? (
-              <Empty>No ideas yet. Start one in <Link className="text-brand hover:underline" to="/become">What could we become?</Link></Empty>
+              <Empty>No ideas yet. Start one in <Link className="text-brand hover:underline" to={at("become")}>What could we become?</Link></Empty>
             ) : (
               <ul className="flex flex-col gap-2">
                 {potential.data!.map((c) => (
                   <li key={c.id} className="flex items-center gap-2">
-                    <Link className="flex-1 text-sm hover:underline" to={itemHref("contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
+                    <Link className="flex-1 text-sm hover:underline" to={itemHref(unit.slug, "contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
                     {c.category && <Badge tone="outline">{c.category.label}</Badge>}
                   </li>
                 ))}
@@ -160,12 +176,12 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             {working.length === 0 ? (
-              <Empty>Nothing agreed yet. Suggest a next step in <Link className="text-brand hover:underline" to="/build">What are we willing to build together?</Link></Empty>
+              <Empty>Nothing agreed yet. Suggest a next step in <Link className="text-brand hover:underline" to={at("build")}>What are we willing to build together?</Link></Empty>
             ) : (
               <ul className="flex flex-col gap-2">
                 {working.slice(0, 5).map((r) => (
                   <li key={r.id} className="flex items-center gap-2">
-                    <Link className="flex-1 text-sm hover:underline" to={`/build?item=${r.id}`}>{r.title}</Link>
+                    <Link className="flex-1 text-sm hover:underline" to={`${at("build")}?item=${r.id}`}>{r.title}</Link>
                     <Badge tone="outline">{r.timeframe} days</Badge>
                     <StatusBadge status={r.status} />
                   </li>
@@ -188,7 +204,7 @@ export default function Home() {
                     <li key={c.id} className="flex gap-2">
                       <span className={cn("mt-0.5 grid size-5 shrink-0 place-items-center rounded text-[10px] font-semibold", d.accent.soft, d.accent.text)}>{d.n}</span>
                       <div className="min-w-0">
-                        <Link className="line-clamp-2 text-sm hover:underline" to={itemHref("contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
+                        <Link className="line-clamp-2 text-sm hover:underline" to={itemHref(unit.slug, "contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
                         <p className="text-xs text-muted">{c.is_anonymous ? "Anonymous" : c.author?.username} · {timeAgo(c.created_at)}</p>
                       </div>
                     </li>
@@ -206,7 +222,7 @@ export default function Home() {
               <ul className="flex flex-col gap-3">
                 {discussions.data!.map((c) => (
                   <li key={c.id}>
-                    <Link className="line-clamp-2 text-sm hover:underline" to={itemHref("contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
+                    <Link className="line-clamp-2 text-sm hover:underline" to={itemHref(unit.slug, "contribution", c.id, c.board, c.dashboard)}>{c.title}</Link>
                     <p className="text-xs text-muted">{c.comment_count} comments · {timeAgo(c.last_activity_at)}</p>
                   </li>
                 ))}
@@ -227,7 +243,7 @@ export default function Home() {
             {dated.length > 0 && <hr className="border-line" />}
             {dated.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
-                <Link to={`/build?item=${r.id}`} className="truncate hover:underline">{r.title}</Link>
+                <Link to={`${at("build")}?item=${r.id}`} className="truncate hover:underline">{r.title}</Link>
                 <span className="shrink-0 text-muted">{formatDate(r.target_date)}</span>
               </div>
             ))}

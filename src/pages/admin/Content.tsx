@@ -10,6 +10,7 @@ import type { Category, Contribution } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Spinner } from "@/components/ui/primitives";
 import { Table, Td, Th } from "./shared";
+import { useUnits } from "@/hooks/useUnit";
 
 export function Content() {
   return (
@@ -25,7 +26,7 @@ function Reports() {
   const { data } = useQuery({
     queryKey: ["admin-reports"],
     queryFn: async () => unwrap(await supabase.from("content_reports")
-      .select("id, reason, status, created_at, contribution_id, comment_id, reporter:profiles!content_reports_reporter_id_fkey(username), contribution:contributions(id, title, board, dashboard, hidden), comment:contribution_comments(id, body, hidden)")
+      .select("id, reason, status, created_at, contribution_id, comment_id, reporter:profiles!content_reports_reporter_id_fkey(username), contribution:contributions(id, title, board, dashboard, hidden, unit:business_units(slug, short_name)), comment:contribution_comments(id, body, hidden)")
       .order("created_at", { ascending: false }).limit(100)) as any[],
   });
   const resolve = useAction((v: { id: string; status: string }) => rpc("admin_resolve_report", { p_id: v.id, p_status: v.status }), { invalidate: [["admin-reports"], ["admin-overview"]] });
@@ -40,7 +41,7 @@ function Reports() {
         <div className="flex flex-col gap-3">
           {open.map((r) => (
             <Card key={r.id} className="p-4">
-              <p className="text-sm"><span className="font-medium">{r.reporter?.username ?? "Someone"}</span> reported {r.contribution ? "a contribution" : "a comment"} · {formatDateTime(r.created_at)}</p>
+              <p className="text-sm"><span className="font-medium">{r.reporter?.username ?? "Someone"}</span> reported {r.contribution ? "a contribution" : "a comment"}{r.contribution?.unit ? ` in ${r.contribution.unit.short_name}` : ""} · {formatDateTime(r.created_at)}</p>
               <p className="mt-1 text-sm text-ink-soft">“{r.reason}”</p>
               <p className="mt-2 rounded-lg bg-canvas p-2 text-sm">{r.contribution?.title ?? r.comment?.body}</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -48,7 +49,7 @@ function Reports() {
                 {r.comment && <Button size="sm" variant="outline" disabled={r.comment.hidden} onClick={() => hide.mutate({ kind: "comment", id: r.comment.id })}>Hide it</Button>}
                 <Button size="sm" variant="brand" onClick={() => resolve.mutate({ id: r.id, status: "resolved" })}>Mark resolved</Button>
                 <Button size="sm" variant="ghost" onClick={() => resolve.mutate({ id: r.id, status: "dismissed" })}>Dismiss</Button>
-                {r.contribution && <Link className="self-center text-sm text-brand hover:underline" to={itemHref("contribution", r.contribution.id, r.contribution.board, r.contribution.dashboard)}>Open</Link>}
+                {r.contribution && <Link className="self-center text-sm text-brand hover:underline" to={itemHref(r.contribution.unit?.slug ?? "", "contribution", r.contribution.id, r.contribution.board, r.contribution.dashboard)}>Open</Link>}
               </div>
             </Card>
           ))}
@@ -61,9 +62,12 @@ function Reports() {
 function Submissions() {
   const [q, setQ] = React.useState("");
   const [show, setShow] = React.useState("all");
+  const [unitFilter, setUnitFilter] = React.useState("");
+  const { data: units } = useUnits();
   const { data, isLoading } = useQuery({
     queryKey: ["admin-content"],
-    queryFn: async () => unwrap(await supabase.from("contributions").select(CONTRIBUTION_SELECT).order("created_at", { ascending: false }).limit(1000)) as Contribution[],
+    queryFn: async () => unwrap(await supabase.from("contributions").select(`${CONTRIBUTION_SELECT}, unit:business_units(slug, short_name)`)
+      .order("created_at", { ascending: false }).limit(1000)) as (Contribution & { unit: { slug: string; short_name: string } | null })[],
   });
   const mod = useAction((v: { id: string; hidden?: boolean | null; archived?: boolean | null }) =>
     rpc("admin_moderate", { p_kind: "contribution", p_id: v.id, p_hidden: v.hidden ?? null, p_archived: v.archived ?? null, p_reason: null }), {
@@ -72,23 +76,29 @@ function Submissions() {
   const del = useAction((id: string) => rpc("delete_contribution", { p_id: id }), { success: "Removed", invalidate: [["admin-content"], ["contributions"]] });
   const rows = (data ?? []).filter((c) =>
     (show === "all" || (show === "hidden" && c.hidden) || (show === "archived" && c.archived)) &&
+    (!unitFilter || c.unit_id === unitFilter) &&
     c.title.toLowerCase().includes(q.toLowerCase()));
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="mr-auto font-display text-lg font-semibold">Submissions</h2>
         <Input aria-label="Search" placeholder="Search titles…" className="h-9 w-56" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Select aria-label="Business unit" className="h-9 w-auto" value={unitFilter} onChange={(e) => setUnitFilter(e.target.value)}>
+          <option value="">All units</option>
+          {(units ?? []).map((u) => <option key={u.id} value={u.id}>{u.short_name}</option>)}
+        </Select>
         <Select aria-label="Show" className="h-9 w-auto" value={show} onChange={(e) => setShow(e.target.value)}>
           <option value="all">All</option><option value="hidden">Hidden</option><option value="archived">Archived</option>
         </Select>
       </div>
       {isLoading ? <Spinner /> : (
         <Table>
-          <thead><tr><Th>Title</Th><Th>Board</Th><Th>Author</Th><Th>Created</Th><Th>State</Th><Th className="text-right">Actions</Th></tr></thead>
+          <thead><tr><Th>Title</Th><Th>Unit</Th><Th>Board</Th><Th>Author</Th><Th>Created</Th><Th>State</Th><Th className="text-right">Actions</Th></tr></thead>
           <tbody>
             {rows.slice(0, 300).map((c) => (
               <tr key={c.id}>
-                <Td><Link className="hover:underline" to={itemHref("contribution", c.id, c.board, c.dashboard)}>{c.title}</Link></Td>
+                <Td><Link className="hover:underline" to={itemHref(c.unit?.slug ?? "", "contribution", c.id, c.board, c.dashboard)}>{c.title}</Link></Td>
+                <Td className="text-xs">{c.unit?.short_name}</Td>
                 <Td className="text-xs">{c.board}</Td>
                 <Td className="text-xs">{c.is_anonymous ? "Anonymous" : c.author?.username ?? "—"}</Td>
                 <Td className="whitespace-nowrap text-xs">{formatDateTime(c.created_at)}</Td>

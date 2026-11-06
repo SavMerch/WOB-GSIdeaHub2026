@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { AppError, rpc, unwrap } from "@/lib/api";
 import type {
-  Category, Comment, Contribution, HealthSummaryRow, PrioritySummaryRow, RelatedItem, RoadmapItem,
+  BdItem, Category, Comment, Contribution, HealthSummaryRow, PrioritySummaryRow, RelatedItem, RoadmapItem,
 } from "@/lib/types";
 
 export const CONTRIBUTION_SELECT =
@@ -12,47 +12,50 @@ export const CONTRIBUTION_SELECT =
 // Shared data refreshes on realtime events; polling is a safety net only.
 const FALLBACK_POLL = 60_000;
 
-export function useContributions(board: string) {
+// Every unit-scoped query key starts with [kind, unitId, ...] so realtime
+// invalidation by kind still reaches it.
+
+export function useContributions(unitId: string, board: string) {
   return useQuery({
-    queryKey: ["contributions", board],
+    queryKey: ["contributions", unitId, board],
     refetchInterval: FALLBACK_POLL,
     queryFn: async () =>
       unwrap(
-        await supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("board", board)
+        await supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("unit_id", unitId).eq("board", board)
           .order("created_at", { ascending: false }).limit(500),
       ) as Contribution[],
   });
 }
 
-export function useRecentContributions(limit = 6, orderBy: "created_at" | "last_activity_at" = "created_at") {
+export function useRecentContributions(unitId: string, limit = 6, orderBy: "created_at" | "last_activity_at" = "created_at") {
   return useQuery({
-    queryKey: ["contributions", "recent", orderBy, limit],
+    queryKey: ["contributions", unitId, "recent", orderBy, limit],
     queryFn: async () => {
-      let q = supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("hidden", false).eq("archived", false);
+      let q = supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("unit_id", unitId).eq("hidden", false).eq("archived", false);
       if (orderBy === "last_activity_at") q = q.gt("comment_count", 0);
       return unwrap(await q.order(orderBy, { ascending: false }).limit(limit)) as Contribution[];
     },
   });
 }
 
-export function useTopContributions(boards: string[], limit = 5) {
+export function useTopContributions(unitId: string, boards: string[], limit = 5) {
   return useQuery({
-    queryKey: ["contributions", "top", boards.join(","), limit],
+    queryKey: ["contributions", unitId, "top", boards.join(","), limit],
     queryFn: async () =>
       unwrap(
-        await supabase.from("contributions").select(CONTRIBUTION_SELECT).in("board", boards)
+        await supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("unit_id", unitId).in("board", boards)
           .eq("hidden", false).eq("archived", false)
           .order("resonates_count", { ascending: false }).order("comment_count", { ascending: false }).limit(limit),
       ) as Contribution[],
   });
 }
 
-export function useFocusItems() {
+export function useFocusItems(unitId: string) {
   return useQuery({
-    queryKey: ["focus"],
+    queryKey: ["focus", unitId],
     queryFn: async () =>
       unwrap(
-        await supabase.from("contributions").select(CONTRIBUTION_SELECT).not("nominated_at", "is", null)
+        await supabase.from("contributions").select(CONTRIBUTION_SELECT).eq("unit_id", unitId).not("nominated_at", "is", null)
           .eq("hidden", false).order("support_count", { ascending: false }).order("nominated_at", { ascending: true }),
       ) as Contribution[],
   });
@@ -76,20 +79,23 @@ export function useMyReactions() {
         contribution_id: string;
         kind: string;
       }[];
-      const set = new Set(rows.map((r) => `${r.kind}:${r.contribution_id}`));
-      return set;
+      return new Set(rows.map((r) => `${r.kind}:${r.contribution_id}`));
     },
   });
 }
 
-export function useComments(parent: { contributionId?: string; roadmapId?: string }, enabled = true) {
-  const key = parent.contributionId ?? parent.roadmapId;
+export function useComments(parent: { contributionId?: string; roadmapId?: string; bdItemId?: string }, enabled = true) {
+  const key = parent.contributionId ?? parent.roadmapId ?? parent.bdItemId;
   return useQuery({
     queryKey: ["comments", key],
     enabled: enabled && !!key,
     queryFn: async () => {
       let q = supabase.from("contribution_comments").select("*, author:profiles!contribution_comments_author_id_fkey(username)");
-      q = parent.contributionId ? q.eq("contribution_id", parent.contributionId) : q.eq("roadmap_item_id", parent.roadmapId!);
+      q = parent.contributionId
+        ? q.eq("contribution_id", parent.contributionId)
+        : parent.roadmapId
+          ? q.eq("roadmap_item_id", parent.roadmapId)
+          : q.eq("bd_item_id", parent.bdItemId!);
       return unwrap(await q.order("created_at")) as Comment[];
     },
   });
@@ -103,9 +109,9 @@ export function useRelated(kind: "contribution" | "roadmap", id: string, enabled
   });
 }
 
-export function useRoadmap() {
+export function useRoadmap(unitId: string) {
   return useQuery({
-    queryKey: ["roadmap"],
+    queryKey: ["roadmap", unitId],
     refetchInterval: FALLBACK_POLL,
     queryFn: async () =>
       unwrap(
@@ -114,26 +120,34 @@ export function useRoadmap() {
           .select(
             "*, owner:profiles!roadmap_items_owner_id_fkey(username), creator:profiles!roadmap_items_created_by_fkey(username), contributors:roadmap_contributors(user_id, role, profile:profiles(username))",
           )
+          .eq("unit_id", unitId)
           .order("created_at"),
       ) as RoadmapItem[],
   });
 }
 
-export function useHealthSummary() {
-  return useQuery({ queryKey: ["health-summary"], queryFn: () => rpc<HealthSummaryRow[]>("get_health_summary") });
+export function useHealthSummary(unitId: string) {
+  return useQuery({
+    queryKey: ["health-summary", unitId],
+    queryFn: () => rpc<HealthSummaryRow[]>("get_health_summary", { p_unit_id: unitId }),
+  });
 }
-export function usePrioritySummary() {
-  return useQuery({ queryKey: ["priority-summary"], queryFn: () => rpc<PrioritySummaryRow[]>("get_priority_summary") });
+export function usePrioritySummary(unitId: string) {
+  return useQuery({
+    queryKey: ["priority-summary", unitId],
+    queryFn: () => rpc<PrioritySummaryRow[]>("get_priority_summary", { p_unit_id: unitId }),
+  });
 }
 
-export function useActivity(limit = 15) {
+export function useActivity(unitId: string, limit = 15) {
   return useQuery({
-    queryKey: ["activity", limit],
+    queryKey: ["activity", unitId, limit],
     queryFn: async () =>
       unwrap(
         await supabase
           .from("activity_events")
           .select("id, event_type, dashboard, entity_type, entity_id, summary, created_at, actor:profiles(username)")
+          .eq("unit_id", unitId)
           .order("created_at", { ascending: false })
           .limit(limit),
       ) as unknown as {
@@ -149,13 +163,24 @@ export function useActivity(limit = 15) {
   });
 }
 
-export function useMembers() {
+/** People who can own or contribute in a unit (assigned members + cross-cutting). */
+export function useMembers(unitId: string) {
   return useQuery({
-    queryKey: ["members"],
+    queryKey: ["members", unitId],
     staleTime: 5 * 60_000,
-    queryFn: async () => unwrap(await supabase.from("profiles").select("id, username, display_name").order("username")) as {
-      id: string; username: string; display_name: string;
-    }[],
+    queryFn: () => rpc<{ id: string; username: string; display_name: string }[]>("get_unit_members", { p_unit: unitId }),
+  });
+}
+
+export const BD_SELECT =
+  "*, owner:profiles!bd_items_owner_id_fkey(username), creator:profiles!bd_items_created_by_fkey(username), editor:profiles!bd_items_updated_by_fkey(username)";
+
+export function useBdItems(unitId: string, kind: string) {
+  return useQuery({
+    queryKey: ["bd", unitId, kind],
+    refetchInterval: FALLBACK_POLL,
+    queryFn: async () =>
+      unwrap(await supabase.from("bd_items").select(BD_SELECT).eq("unit_id", unitId).eq("kind", kind).order("created_at")) as BdItem[],
   });
 }
 
@@ -189,7 +214,7 @@ export function useAction<TVars, TResult = unknown>(
 }
 
 /** Optimistic reaction toggle — counts update instantly, reconcile on reply. */
-export function useToggleReaction(board?: string) {
+export function useToggleReaction(listKey?: unknown[]) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; kind: "resonates" | "support" | "top" }) =>
@@ -204,16 +229,16 @@ export function useToggleReaction(board?: string) {
         qc.setQueryData(["my-reactions"], next);
       }
       const field = v.kind === "resonates" ? "resonates_count" : v.kind === "support" ? "support_count" : "top_count";
-      const prev = board ? qc.getQueryData<Contribution[]>(["contributions", board]) : undefined;
-      if (board && prev) {
-        qc.setQueryData<Contribution[]>(["contributions", board], prev.map((c) =>
+      const prev = listKey ? qc.getQueryData<Contribution[]>(listKey) : undefined;
+      if (listKey && prev) {
+        qc.setQueryData<Contribution[]>(listKey, prev.map((c) =>
           c.id === v.id ? { ...c, [field]: Math.max(0, c[field] + (had ? -1 : 1)) } : c));
       }
       return { mine, prev };
     },
     onError: (e, _v, ctx) => {
       if (ctx?.mine) qc.setQueryData(["my-reactions"], ctx.mine);
-      if (board && ctx?.prev) qc.setQueryData(["contributions", board], ctx.prev);
+      if (listKey && ctx?.prev) qc.setQueryData(listKey, ctx.prev);
       toast.error(e instanceof Error ? e.message : "Couldn't save that.");
     },
     onSettled: () => {

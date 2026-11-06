@@ -7,8 +7,9 @@ import { rpc, unwrap } from "@/lib/api";
 import { DASHBOARDS } from "@/lib/dashboards";
 import { useAction, useHealthSummary } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsUnitMember, useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Notice, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { PageHeader, SectionHeader, SuppressedNote } from "@/components/collab/common";
 import { ContributionBoard } from "@/components/collab/ContributionBoard";
 
@@ -53,20 +54,23 @@ export default function Honest() {
 }
 
 function HowAreWeDoing() {
-  const { canContribute, profile, settings } = useAuth();
+  const { canContribute: canContributeAny, profile, settings } = useAuth();
+  const unit = useUnit();
+  const isMember = useIsUnitMember();
+  const canContribute = canContributeAny && isMember;
   const qc = useQueryClient();
-  const summary = useHealthSummary();
+  const summary = useHealthSummary(unit.id);
   const mine = useQuery({
-    queryKey: ["my-health", profile?.id],
+    queryKey: ["my-health", profile?.id, unit.id],
     queryFn: async () =>
-      unwrap(await supabase.from("health_ratings").select("category_id, score")) as { category_id: string; score: number }[],
+      unwrap(await supabase.from("health_ratings").select("category_id, score").eq("unit_id", unit.id)) as { category_id: string; score: number }[],
   });
   const [draft, setDraft] = React.useState<Record<string, number>>({});
   React.useEffect(() => {
     if (mine.data) setDraft(Object.fromEntries(mine.data.map((r) => [r.category_id, r.score])));
   }, [mine.data]);
   const save = useAction(
-    () => rpc("submit_health_ratings", { p_ratings: Object.entries(draft).map(([category_id, score]) => ({ category_id, score })) }),
+    () => rpc("submit_health_ratings", { p_unit_id: unit.id, p_ratings: Object.entries(draft).map(([category_id, score]) => ({ category_id, score })) }),
     { success: "Your ratings are saved", invalidate: [["my-health"], ["health-summary"]] },
   );
   const threshold = settings?.privacy_threshold ?? 3;
@@ -77,6 +81,8 @@ function HowAreWeDoing() {
 
   if (summary.isLoading) return <Spinner />;
   return (
+    <>
+    {canContributeAny && !isMember && <Notice className="mb-4">You're viewing {unit.short_name} as a cross-cutting member. Ratings here are given by people assigned to this unit; you can see the group results.</Notice>}
     <div className="grid gap-6 lg:grid-cols-5">
       <Card className="lg:col-span-2">
         <CardHeader>
@@ -160,5 +166,6 @@ function HowAreWeDoing() {
         </CardContent>
       </Card>
     </div>
+    </>
   );
 }

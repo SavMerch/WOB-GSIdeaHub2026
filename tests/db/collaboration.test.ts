@@ -16,7 +16,7 @@ afterAll(async () => db?.close());
 
 const create = (who: { id: string }, board: string, title: string) =>
   db
-    .as(who, "select public.create_contribution($1, $2) as id", [board, title])
+    .as(who, "select public.create_contribution((select id from public.business_units where slug = 'corporate-solutions'), $1, $2) as id", [board, title])
     .then((r) => r.rows[0].id as string);
 
 describe("Comments", () => {
@@ -50,7 +50,7 @@ describe("Cross-dashboard links (Section 14)", () => {
     const action = (
       await db.as(
         alice,
-        "select public.create_roadmap_item('Set a 48-hour decision rule', '', 60::smallint, 'Decisions within two days', null, $1, null) id",
+        "select public.create_roadmap_item((select id from public.business_units where slug = 'corporate-solutions'), 'Set a 48-hour decision rule', '', 60::smallint, 'Decisions within two days', null, $1, null) id",
         [issue],
       )
     ).rows[0].id;
@@ -72,7 +72,7 @@ describe("Cross-dashboard links (Section 14)", () => {
 describe("Roadmap (Dashboard 5)", () => {
   it("suggesting never assigns ownership; only admins/owners can agree or complete", async () => {
     const id = (
-      await db.as(alice, "select public.create_roadmap_item('Weekly ops huddle', '', 60::smallint, '', null, null, null) id")
+      await db.as(alice, "select public.create_roadmap_item((select id from public.business_units where slug = 'corporate-solutions'), 'Weekly ops huddle', '', 60::smallint, '', null, null, null) id")
     ).rows[0].id;
     const row = await db.as(alice, "select owner_id, status from public.roadmap_items where id = $1", [id]);
     expect(row.rows[0]).toEqual({ owner_id: null, status: "suggested" });
@@ -89,7 +89,7 @@ describe("Roadmap (Dashboard 5)", () => {
   });
   it("version conflicts are detected on roadmap edits", async () => {
     const id = (
-      await db.as(alice, "select public.create_roadmap_item('Client survey', '', 90::smallint, '', null, null, null) id")
+      await db.as(alice, "select public.create_roadmap_item((select id from public.business_units where slug = 'corporate-solutions'), 'Client survey', '', 90::smallint, '', null, null, null) id")
     ).rows[0].id;
     await db.as(alice, "select public.update_roadmap_item($1, 1, 'Client survey v2', '', 90::smallint, '', null)", [id]);
     const err = await rejects(
@@ -106,7 +106,7 @@ describe("Roadmap (Dashboard 5)", () => {
 
 describe("Home summary", () => {
   it("returns counts without individual data", async () => {
-    const r = await db.as(alice, "select public.get_home_summary() s");
+    const r = await db.as(alice, "select public.get_home_summary((select id from public.business_units where slug = 'corporate-solutions')) s");
     const s = r.rows[0].s;
     expect(s.members).toBe(3);
     expect(Object.keys(s)).toEqual(

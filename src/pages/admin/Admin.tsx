@@ -6,10 +6,12 @@ import { Security } from "./Security";
 import { Content } from "./Content";
 import { Settings } from "./Settings";
 import { Export } from "./Export";
+import { Units } from "./Units";
 
 const SECTIONS = [
   { path: "overview", label: "Overview", el: <Overview /> },
   { path: "people", label: "People", el: <People /> },
+  { path: "units", label: "Business Units", el: <Units /> },
   { path: "security", label: "Access & Security", el: <Security /> },
   { path: "content", label: "Content", el: <Content /> },
   { path: "settings", label: "Workspace Settings", el: <Settings /> },

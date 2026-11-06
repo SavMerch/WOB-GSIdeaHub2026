@@ -13,8 +13,9 @@ import { DASHBOARDS } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
 import { useAction, useItemBoard, usePrioritySummary } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsUnitMember, useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Notice, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { PageHeader, SectionHeader, SuppressedNote } from "@/components/collab/common";
 import { ContributionBoard } from "@/components/collab/ContributionBoard";
 
@@ -57,14 +58,17 @@ function useFactors() {
 }
 
 function MyPriorities({ onDone }: { onDone: () => void }) {
-  const { canContribute, profile } = useAuth();
+  const { canContribute: canContributeAny, profile } = useAuth();
+  const unit = useUnit();
+  const isMember = useIsUnitMember();
+  const canContribute = canContributeAny && isMember;
   const factors = useFactors();
   const mine = useQuery({
-    queryKey: ["my-priorities", profile?.id],
+    queryKey: ["my-priorities", profile?.id, unit.id],
     queryFn: async () => {
       const [r, e] = await Promise.all([
-        supabase.from("priority_rankings").select("factor_id, rank").order("rank"),
-        supabase.from("priority_experience_ratings").select("factor_id, score"),
+        supabase.from("priority_rankings").select("factor_id, rank").eq("unit_id", unit.id).order("rank"),
+        supabase.from("priority_experience_ratings").select("factor_id, score").eq("unit_id", unit.id),
       ]);
       return {
         ranks: unwrap(r) as { factor_id: string; rank: number }[],
@@ -95,9 +99,9 @@ function MyPriorities({ onDone }: { onDone: () => void }) {
   const move = (i: number, d: -1 | 1) => setOrder((o) => (i + d < 0 || i + d >= o.length ? o : arrayMove(o, i, i + d)));
 
   const save = useAction(async () => {
-    await rpc("submit_priority_ranking", { p_factor_ids: order });
+    await rpc("submit_priority_ranking", { p_unit_id: unit.id, p_factor_ids: order });
     const ratings = Object.entries(exp).map(([factor_id, score]) => ({ factor_id, score }));
-    if (ratings.length) await rpc("submit_experience_ratings", { p_ratings: ratings });
+    if (ratings.length) await rpc("submit_experience_ratings", { p_unit_id: unit.id, p_ratings: ratings });
   }, { success: "Your priorities are saved — only you can see them", invalidate: [["my-priorities"], ["priority-summary"]] });
 
   if (factors.isLoading || mine.isLoading) return <Spinner />;
@@ -106,6 +110,7 @@ function MyPriorities({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">
+      {canContributeAny && !isMember && <div className="lg:col-span-5"><Notice>You're viewing {unit.short_name} as a cross-cutting member. Rankings here are given by people assigned to this unit; you can see the group results.</Notice></div>}
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>What matters most to you?</CardTitle>
@@ -193,7 +198,8 @@ function SortableRow({ id, index, label, total, disabled, onUp, onDown }: { id: 
 
 function GroupView() {
   const { settings } = useAuth();
-  const { data, isLoading } = usePrioritySummary();
+  const unit = useUnit();
+  const { data, isLoading } = usePrioritySummary(unit.id);
   if (isLoading) return <Spinner />;
   const rows = data ?? [];
   const threshold = settings?.privacy_threshold ?? 3;

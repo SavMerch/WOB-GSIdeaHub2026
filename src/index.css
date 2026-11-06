@@ -70,3 +70,7 @@
 /* Highlight when a card is opened from a deep link */
 @keyframes lc-flash { from { box-shadow: 0 0 0 3px var(--color-brand); } to { box-shadow: var(--shadow-card); } }
 .lc-flash { animation: lc-flash 2.4s ease-out 1; }
+
+/* Keep visually-hidden (sr-only) labels inside scrolling tables from
+   widening the page on phones: make scroll areas the containing block. */
+.overflow-x-auto { position: relative; }

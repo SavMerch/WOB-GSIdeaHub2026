@@ -22,7 +22,7 @@ afterAll(async () => db?.close());
 
 const create = (who: { id: string }, board: string, title: string, anon = false) =>
   db
-    .as(who, "select public.create_contribution($1, $2, '', null, '{}'::jsonb, $3, null) as id", [board, title, anon])
+    .as(who, "select public.create_contribution((select id from public.business_units where slug = 'corporate-solutions'), $1, $2, '', null, '{}'::jsonb, $3, null) as id", [board, title, anon])
     .then((r) => r.rows[0].id as string);
 
 describe("Scenario 8: unauthenticated visitors", () => {
@@ -33,7 +33,7 @@ describe("Scenario 8: unauthenticated visitors", () => {
     }
   });
   it("anon cannot call any RPC", async () => {
-    const err = await rejects(db.as("anon", "select public.create_contribution('barriers','x')"));
+    const err = await rejects(db.as("anon", "select public.create_contribution((select id from public.business_units where slug = 'corporate-solutions'), 'barriers','x')"));
     expect(err.message).toMatch(/permission denied/);
   });
   it("anon and authenticated cannot read invitation code hashes or tokens", async () => {
@@ -78,7 +78,7 @@ describe("Scenario 1: pending users see nothing", () => {
 
 describe("Scenario 2: admin approval", () => {
   it("admin approves and the user gains access", async () => {
-    await db.as(admin, "select public.admin_review_registration($1, true, 'participant', null)", [pending.id]);
+    await db.as(admin, "select public.admin_review_registration($1, true, 'participant', null, array[$2]::uuid[])", [pending.id, await db.unit("corporate-solutions")]);
     const { rows } = await db.as(pending, "select count(*)::int as n from public.contributions");
     expect(rows[0].n).toBeGreaterThan(0);
     const audit = await db.as(admin, "select action from public.administrative_audit_logs where target_id = $1", [
@@ -129,7 +129,7 @@ describe("Cross-user edits and conflicts", () => {
   });
   it("repeated clicks with the same request id create one record", async () => {
     const rid = "11111111-2222-3333-4444-555555555555";
-    const q = "select public.create_contribution('known_for', 'Double click', '', null, '{}', false, $1) id";
+    const q = "select public.create_contribution((select id from public.business_units where slug = 'corporate-solutions'), 'known_for', 'Double click', '', null, '{}', false, $1) id";
     const a = await db.as(alice, q, [rid]);
     const b = await db.as(alice, q, [rid]);
     expect(a.rows[0].id).toBe(b.rows[0].id);
@@ -138,7 +138,7 @@ describe("Cross-user edits and conflicts", () => {
     expect((await rejects(create(alice, "barriers", "   "))).code).toBe("LC422");
     expect((await rejects(create(alice, "barriers", "x".repeat(201)))).code).toBe("LC422");
     expect(
-      (await rejects(db.as(alice, "select public.create_contribution('grow', 't', '', null, '{\"evil\":\"1\"}')"))).code,
+      (await rejects(db.as(alice, "select public.create_contribution((select id from public.business_units where slug = 'corporate-solutions'), 'grow', 't', '', null, '{\"evil\":\"1\"}')"))).code,
     ).toBe("LC422");
   });
 });
@@ -212,23 +212,23 @@ describe("Scenario 5: private rankings and ratings", () => {
 
   it("rejects invalid rankings", async () => {
     const ids = await factorIds();
-    expect((await rejects(db.as(alice, "select public.submit_priority_ranking($1)", [ids.slice(1)]))).code).toBe("LC422");
+    expect((await rejects(db.as(alice, "select public.submit_priority_ranking((select id from public.business_units where slug = 'corporate-solutions'), $1)", [ids.slice(1)]))).code).toBe("LC422");
     expect(
-      (await rejects(db.as(alice, "select public.submit_priority_ranking($1)", [[ids[0], ...ids.slice(0, -1)]]))).code,
+      (await rejects(db.as(alice, "select public.submit_priority_ranking((select id from public.business_units where slug = 'corporate-solutions'), $1)", [[ids[0], ...ids.slice(0, -1)]]))).code,
     ).toBe("LC422");
   });
 
   it("aggregates are suppressed below the threshold and appear at it", async () => {
     const ids = await factorIds();
-    await db.as(alice, "select public.submit_priority_ranking($1)", [ids]);
-    await db.as(bob, "select public.submit_priority_ranking($1)", [[...ids].reverse()]);
-    let s = await db.as(carol, "select * from public.get_priority_summary()");
+    await db.as(alice, "select public.submit_priority_ranking((select id from public.business_units where slug = 'corporate-solutions'), $1)", [ids]);
+    await db.as(bob, "select public.submit_priority_ranking((select id from public.business_units where slug = 'corporate-solutions'), $1)", [[...ids].reverse()]);
+    let s = await db.as(carol, "select * from public.get_priority_summary((select id from public.business_units where slug = 'corporate-solutions'))");
     expect(s.rows[0].rank_suppressed).toBe(true);
     expect(s.rows[0].avg_rank).toBeNull();
     expect(s.rows[0].rank_distribution).toBeNull();
 
-    await db.as(carol, "select public.submit_priority_ranking($1)", [ids]);
-    s = await db.as(alice, "select * from public.get_priority_summary()");
+    await db.as(carol, "select public.submit_priority_ranking((select id from public.business_units where slug = 'corporate-solutions'), $1)", [ids]);
+    s = await db.as(alice, "select * from public.get_priority_summary((select id from public.business_units where slug = 'corporate-solutions'))");
     expect(s.rows[0].rank_suppressed).toBe(false);
     expect(Number(s.rows[0].avg_rank)).toBeCloseTo((1 + 9 + 1) / 3, 1);
   });
@@ -245,16 +245,16 @@ describe("Scenario 5: private rankings and ratings", () => {
   it("health ratings: range enforced, own-only, thresholded", async () => {
     const cats = (await db.sql("select id from public.health_categories order by sort")).rows.map((r) => r.id);
     expect(
-      (await rejects(db.as(alice, "select public.submit_health_ratings($1)", [JSON.stringify([{ category_id: cats[0], score: 11 }])])))
+      (await rejects(db.as(alice, "select public.submit_health_ratings((select id from public.business_units where slug = 'corporate-solutions'), $1)", [JSON.stringify([{ category_id: cats[0], score: 11 }])])))
         .code,
     ).toBe("LC422");
-    await db.as(alice, "select public.submit_health_ratings($1)", [JSON.stringify([{ category_id: cats[0], score: 8 }])]);
-    let s = await db.as(bob, "select * from public.get_health_summary() where category_id = $1", [cats[0]]);
+    await db.as(alice, "select public.submit_health_ratings((select id from public.business_units where slug = 'corporate-solutions'), $1)", [JSON.stringify([{ category_id: cats[0], score: 8 }])]);
+    let s = await db.as(bob, "select * from public.get_health_summary((select id from public.business_units where slug = 'corporate-solutions')) where category_id = $1", [cats[0]]);
     expect(s.rows[0].suppressed).toBe(true);
     expect(s.rows[0].avg_score).toBeNull();
-    await db.as(bob, "select public.submit_health_ratings($1)", [JSON.stringify([{ category_id: cats[0], score: 6 }])]);
-    await db.as(carol, "select public.submit_health_ratings($1)", [JSON.stringify([{ category_id: cats[0], score: 4 }])]);
-    s = await db.as(bob, "select * from public.get_health_summary() where category_id = $1", [cats[0]]);
+    await db.as(bob, "select public.submit_health_ratings((select id from public.business_units where slug = 'corporate-solutions'), $1)", [JSON.stringify([{ category_id: cats[0], score: 6 }])]);
+    await db.as(carol, "select public.submit_health_ratings((select id from public.business_units where slug = 'corporate-solutions'), $1)", [JSON.stringify([{ category_id: cats[0], score: 4 }])]);
+    s = await db.as(bob, "select * from public.get_health_summary((select id from public.business_units where slug = 'corporate-solutions')) where category_id = $1", [cats[0]]);
     expect(Number(s.rows[0].avg_score)).toBe(6);
     const peek = await db.as(admin, "select * from public.health_ratings where user_id <> $1", [admin.id]);
     expect(peek.rows).toHaveLength(0);
@@ -274,7 +274,7 @@ describe("Scenario 6: suspension takes effect immediately", () => {
     const r = await db.as(dave, "select * from public.contributions");
     expect(r.rows).toHaveLength(0);
     expect((await rejects(create(dave, "known_for", "After suspension"))).code).toBe("LC401");
-    expect((await rejects(db.as(dave, "select * from public.get_home_summary()"))).code).toBe("LC401");
+    expect((await rejects(db.as(dave, "select * from public.get_home_summary((select id from public.business_units where slug = 'corporate-solutions'))"))).code).toBe("LC401");
     // reactivation restores access
     await db.as(admin, "select public.admin_set_status($1, 'active')", [dave.id]);
     expect((await db.as(dave, "select count(*)::int n from public.contributions")).rows[0].n).toBeGreaterThan(0);

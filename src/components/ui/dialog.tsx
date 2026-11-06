@@ -12,7 +12,7 @@ export function DialogContent({
   children,
   side,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & { side?: "left" }) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & { side?: "left" | "right" }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[1px]" />
@@ -20,6 +20,8 @@ export function DialogContent({
         className={cn(
           side === "left"
             ? "fixed inset-y-0 left-0 z-50 w-[84vw] max-w-xs overflow-y-auto bg-surface shadow-[var(--shadow-pop)] focus:outline-none"
+            : side === "right"
+            ? "fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l border-line bg-surface p-6 shadow-[var(--shadow-pop)] focus:outline-none"
             : "fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-line bg-surface p-6 shadow-[var(--shadow-pop)] focus:outline-none",
           className,
         )}

@@ -6,7 +6,7 @@ import { callFunction } from "@/lib/api";
 import { supabase, initialAuthLinkType } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Notice } from "@/components/ui/primitives";
+import { Field, Input, Notice, Select } from "@/components/ui/primitives";
 
 export function AuthLayout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
@@ -50,9 +50,9 @@ export function GatePage() {
     setBusy(true);
     setError(null);
     try {
-      const r = await callFunction<{ registrationToken: string; expiresAt: number }>("gate", { code });
+      const r = await callFunction<{ registrationToken: string; expiresAt: number; units: { id: string; name: string }[] }>("gate", { code });
       // Kept in memory only (router state) — never persisted.
-      nav("/register", { state: { token: r.registrationToken, expiresAt: r.expiresAt } });
+      nav("/register", { state: { token: r.registrationToken, expiresAt: r.expiresAt, units: r.units } });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -91,14 +91,14 @@ export function RegisterPage() {
   const loc = useLocation();
   const nav = useNavigate();
   const { signIn } = useAuth();
-  const state = loc.state as { token?: string; expiresAt?: number } | null;
-  const [form, setForm] = React.useState({ displayName: "", email: "", username: "", password: "", passwordConfirm: "" });
+  const state = loc.state as { token?: string; expiresAt?: number; units?: { id: string; name: string }[] } | null;
+  const [form, setForm] = React.useState({ displayName: "", email: "", username: "", password: "", passwordConfirm: "", unitId: "" });
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   if (!state?.token || (state.expiresAt && state.expiresAt < Date.now())) return <Navigate to="/welcome" replace />;
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -123,6 +123,12 @@ export function RegisterPage() {
       <form onSubmit={submit} className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-6 shadow-[var(--shadow-card)]">
         <Field label="Your name" htmlFor="dn"><Input id="dn" autoComplete="name" value={form.displayName} onChange={set("displayName")} required maxLength={80} /></Field>
         <Field label="Email address" htmlFor="em"><Input id="em" type="email" autoComplete="email" value={form.email} onChange={set("email")} required /></Field>
+        <Field label="Your business unit" htmlFor="bu" hint="An administrator confirms this when approving your account.">
+          <Select id="bu" value={form.unitId} onChange={set("unitId")} required>
+            <option value="">Choose one…</option>
+            {(state.units ?? []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </Select>
+        </Field>
         <Field label="Username" htmlFor="un" hint="This is how you'll appear to others. 3–32 letters, numbers, dots, dashes or underscores.">
           <Input id="un" autoComplete="username" value={form.username} onChange={set("username")} required pattern="[A-Za-z0-9_.\-]{3,32}" maxLength={32} />
         </Field>
@@ -265,7 +271,7 @@ export function PendingPage() {
     const t = setInterval(refresh, 30_000);
     return () => clearInterval(t);
   }, [refresh]);
-  if (membership?.status === "active") return <Navigate to="/home" replace />;
+  if (membership?.status === "active") return <Navigate to="/units" replace />;
   const rejected = membership?.status === "rejected";
   return (
     <AuthLayout>

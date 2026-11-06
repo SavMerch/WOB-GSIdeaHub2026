@@ -7,18 +7,21 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/primitives";
 import { PresenceStrip } from "@/components/layout/AppShell";
 import { useAuth } from "@/hooks/useAuth";
+import { useOptionalUnit } from "@/hooks/useUnit";
 
-export function PageHeader({ dashboard, title, subtitle }: { dashboard?: DashboardMeta; title: string; subtitle: string }) {
+export function PageHeader({ dashboard, title, subtitle, eyebrow }: { dashboard?: DashboardMeta; title: string; subtitle: string; eyebrow?: string }) {
   const { settings } = useAuth();
+  const unit = useOptionalUnit();
   const desc = dashboard ? settings?.dashboard_descriptions?.[String(dashboard.n)] : undefined;
   return (
     <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="max-w-2xl">
         {dashboard && (
           <p className={cn("eyebrow mb-2 flex items-center gap-2", dashboard.accent.text)}>
-            <dashboard.icon className="size-3.5" aria-hidden /> Question {dashboard.n} of 5
+            <dashboard.icon className="size-3.5" aria-hidden /> Question {dashboard.n} of 5{unit ? ` · ${unit.short_name}` : ""}
           </p>
         )}
+        {!dashboard && eyebrow && <p className="eyebrow mb-2 text-brand">{eyebrow}</p>}
         <h1 className="text-2xl font-semibold leading-tight text-ink sm:text-3xl">{title}</h1>
         <p className="mt-2 text-base text-ink-soft">{desc || subtitle}</p>
       </div>

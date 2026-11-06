@@ -10,6 +10,9 @@ export interface Person {
   email: string;
   role: string;
   status: string;
+  all_units: boolean;
+  unit_ids: string[];
+  requested_unit_id: string | null;
   joined_at: string;
   approved_at: string | null;
   last_login_at: string | null;

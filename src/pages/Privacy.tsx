@@ -24,6 +24,10 @@ export function PrivacyContent() {
       <Section title="Who can get in">
         <p>Only invited people whose accounts an administrator has approved. The shared invitation password lets someone <em>request</em> an account; it doesn't grant access to anything. Administrators can pause or remove access at any time, and it takes effect immediately.</p>
       </Section>
+      <Section title="Business units">
+        <p>Each business unit has its own space. You see only the unit(s) you're assigned to — other units can't see your unit's posts, discussions, roadmap, or 2027 plans, and you can't see theirs. This is enforced by the database, not just by the screens.</p>
+        <p>A small cross-cutting group (and administrators) can see every unit and an Executive View that combines results into Corporate Solutions and Government Solutions. That view shows group results only — individual ratings and rankings are never shown — and a unit with too few responses is left out of the totals so its answers can't be worked out by subtraction.</p>
+      </Section>
       <Section title="What's attributed to you">
         <p>Ideas, comments, reactions counts, roadmap volunteering, and your username are visible to other members. Who reacted to what is not shown to anyone — only totals.</p>
       </Section>

@@ -10,6 +10,7 @@ import { addDays, cn, formatDate, newRequestId } from "@/lib/utils";
 import type { RoadmapItem, RoadmapStatus } from "@/lib/types";
 import { useAction, useFocusItems, useItemBoard, useMembers, useMyReactions, useRoadmap, useToggleReaction } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, Input, Select, Spinner, Tabs, TabsContent, TabsList, TabsTrigger, Textarea } from "@/components/ui/primitives";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -53,7 +54,8 @@ export default function Build() {
 // A. What should we focus on?
 // ---------------------------------------------------------------------
 function FocusList() {
-  const { data, isLoading } = useFocusItems();
+  const unit = useUnit();
+  const { data, isLoading } = useFocusItems(unit.id);
   const { data: mine } = useMyReactions();
   const toggle = useToggleReaction();
   const { canContribute } = useAuth();
@@ -76,7 +78,7 @@ function FocusList() {
                 <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                   <span className={cn("grid size-8 shrink-0 place-items-center rounded-lg", d.accent.soft, d.accent.text)}><d.icon className="size-4" aria-hidden /></span>
                   <div className="min-w-0 flex-1">
-                    <Link to={itemHref("contribution", c.id, c.board, c.dashboard)} className="font-medium hover:underline">{c.title}</Link>
+                    <Link to={itemHref(unit.slug, "contribution", c.id, c.board, c.dashboard)} className="font-medium hover:underline">{c.title}</Link>
                     <p className="text-xs text-muted">From “{d.question}” · {c.comment_count} comments · {c.resonates_count} resonate</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -101,7 +103,8 @@ function FocusList() {
 // B. 60 / 90 / 120 day roadmap
 // ---------------------------------------------------------------------
 function Roadmap() {
-  const { data, isLoading } = useRoadmap();
+  const unit = useUnit();
+  const { data, isLoading } = useRoadmap(unit.id);
   const { canContribute, settings } = useAuth();
   const [params, setParams] = useSearchParams();
   const [form, setForm] = React.useState<{ open: boolean; timeframe?: 60 | 90 | 120; editing?: RoadmapItem }>({ open: false });
@@ -165,7 +168,8 @@ function RoadmapCard({ item: r, autoOpen, onEdit, onClearFocus }: { item: Roadma
   const { profile, isAdmin, canContribute } = useAuth();
   const [open, setOpen] = React.useState(!!autoOpen);
   const ref = React.useRef<HTMLDivElement>(null);
-  const members = useMembers();
+  const unit = useUnit();
+  const members = useMembers(unit.id);
   const me = r.contributors?.find((c) => c.user_id === profile?.id);
   const isOwner = r.owner_id === profile?.id;
   const canManage = isAdmin || isOwner;
@@ -264,11 +268,12 @@ function RoadmapCard({ item: r, autoOpen, onEdit, onClearFocus }: { item: Roadma
 
 function RoadmapForm({ open, onOpenChange, timeframe, editing, relatedId }: { open: boolean; onOpenChange: (o: boolean) => void; timeframe?: 60 | 90 | 120; editing?: RoadmapItem; relatedId?: string }) {
   const [v, setV] = React.useState({ title: "", description: "", timeframe: 60 as 60 | 90 | 120, target_outcome: "", target_date: "", related: "" });
+  const unit = useUnit();
   const rid = React.useRef(newRequestId());
   const candidates = useQuery({
-    queryKey: ["roadmap-related-candidates"],
+    queryKey: ["roadmap-related-candidates", unit.id],
     enabled: open && !editing,
-    queryFn: async () => unwrap(await supabase.from("contributions").select("id, title, dashboard").eq("hidden", false).eq("archived", false)
+    queryFn: async () => unwrap(await supabase.from("contributions").select("id, title, dashboard").eq("unit_id", unit.id).eq("hidden", false).eq("archived", false)
       .order("nominated_at", { ascending: false, nullsFirst: false }).order("resonates_count", { ascending: false }).limit(150)) as { id: string; title: string; dashboard: number }[],
   });
   React.useEffect(() => {
@@ -284,7 +289,7 @@ function RoadmapForm({ open, onOpenChange, timeframe, editing, relatedId }: { op
     () => editing
       ? rpc("update_roadmap_item", { p_id: editing.id, p_expected_version: editing.version, p_title: v.title, p_description: v.description,
           p_timeframe: v.timeframe, p_target_outcome: v.target_outcome, p_target_date: v.target_date || null })
-      : rpc("create_roadmap_item", { p_title: v.title, p_description: v.description, p_timeframe: v.timeframe, p_target_outcome: v.target_outcome,
+      : rpc("create_roadmap_item", { p_unit_id: unit.id, p_title: v.title, p_description: v.description, p_timeframe: v.timeframe, p_target_outcome: v.target_outcome,
           p_target_date: v.target_date || null, p_related_contribution_id: v.related || null, p_client_request_id: rid.current }),
     { success: editing ? "Saved" : "Next step suggested", invalidate: [["roadmap"], ["related"]], retry: !editing },
   );
@@ -360,9 +365,10 @@ function EachOther() {
 }
 
 function CommitmentsSummary() {
+  const unit = useUnit();
   const { data } = useQuery({
-    queryKey: ["contributions", "commitments"],
-    queryFn: async () => unwrap(await supabase.from("contributions").select("id, title, support_count").eq("board", "expectations").eq("status", "commitment").eq("hidden", false)) as { id: string; title: string; support_count: number }[],
+    queryKey: ["contributions", unit.id, "commitments"],
+    queryFn: async () => unwrap(await supabase.from("contributions").select("id, title, support_count").eq("unit_id", unit.id).eq("board", "expectations").eq("status", "commitment").eq("hidden", false)) as { id: string; title: string; support_count: number }[],
   });
   if (!data?.length) return null;
   return (

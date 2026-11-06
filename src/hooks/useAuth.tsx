@@ -12,6 +12,8 @@ interface AuthState {
   membership: Membership | null;
   settings: WorkspaceSettings | null;
   isAdmin: boolean;
+  /** Cross-cutting: every business unit plus the Executive View. */
+  isExec: boolean;
   canContribute: boolean;
   /** Message to show after a forced sign-out (suspension, idle timeout). */
   endedReason: string | null;
@@ -56,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryFn: async () => {
       const [p, m] = await Promise.all([
         supabase.from("profiles").select("id, username, display_name").eq("id", uid!).maybeSingle(),
-        supabase.from("workspace_memberships").select("role, status").eq("user_id", uid!).maybeSingle(),
+        supabase.from("workspace_memberships").select("role, status, all_units").eq("user_id", uid!).maybeSingle(),
       ]);
       return { profile: unwrap(p) as Profile | null, membership: unwrap(m) as Membership | null };
     },
@@ -155,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     membership,
     settings: settings.data ?? null,
     isAdmin: active && membership?.role === "admin",
+    isExec: active && (membership?.role === "admin" || !!membership?.all_units),
     canContribute: active && (membership?.role === "admin" || membership?.role === "participant"),
     endedReason,
     signIn,

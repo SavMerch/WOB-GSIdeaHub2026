@@ -26,6 +26,12 @@ export default safe(async (req: Request, context: Context) => {
   }
   const input = parsed.value;
 
+  const requestedUnitId = typeof body.unitId === "string" ? body.unitId : "";
+  const { data: unit } = requestedUnitId
+    ? await svc.from("business_units").select("id").eq("id", requestedUnitId).eq("active", true).maybeSingle()
+    : { data: null };
+  if (!unit) return fail(400, "Please choose your business unit.");
+
   const { data: settings } = await svc.from("workspace_settings").select("registration_open, require_approval").single();
   if (!settings?.registration_open) return fail(403, "New account requests are not being accepted right now.");
 
@@ -81,8 +87,12 @@ export default safe(async (req: Request, context: Context) => {
     await rollback();
     throw mErr;
   }
+  if (status === "active") {
+    await svc.from("unit_memberships").insert({ user_id: userId, unit_id: unit.id });
+  }
   await svc.from("registration_requests").insert({
     user_id: userId,
+    requested_unit_id: unit.id,
     email: input.email,
     username: input.username,
     display_name: input.displayName,

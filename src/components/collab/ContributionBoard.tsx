@@ -10,6 +10,7 @@ import { cn, timeAgo } from "@/lib/utils";
 import { STATUS_LABEL } from "@/lib/dashboards";
 import { useAction, useCategories, useContributions, useMyReactions, useToggleReaction } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, Select, Spinner } from "@/components/ui/primitives";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -40,7 +41,8 @@ type SortKey = "newest" | "resonates" | "discussed" | "significant" | "active";
 
 export function ContributionBoard(opts: BoardOptions) {
   const { canContribute, settings } = useAuth();
-  const { data, isLoading, error } = useContributions(opts.board);
+  const unit = useUnit();
+  const { data, isLoading, error } = useContributions(unit.id, opts.board);
   const { data: categories } = useCategories(opts.board);
   const [params, setParams] = useSearchParams();
   const [formOpen, setFormOpen] = React.useState(false);
@@ -163,7 +165,8 @@ export function ContributionCard({
   const [reporting, setReporting] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const { data: mine } = useMyReactions();
-  const toggle = useToggleReaction(opts.board);
+  const unit = useUnit();
+  const toggle = useToggleReaction(["contributions", unit.id, opts.board]);
   const kind = opts.reactionKind ?? "resonates";
   const reacted = mine?.has(`${kind}:${c.id}`);
   const markedTop = mine?.has(`top:${c.id}`);

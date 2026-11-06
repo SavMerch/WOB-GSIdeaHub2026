@@ -8,9 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, Notice } fro
 const KINDS = [
   { kind: "contributions", title: "Contributions", desc: "Every idea, issue and thought. Anonymous posts are labeled “Anonymous” — no identity is stored to export." },
   { kind: "comments", title: "Comments", desc: "All discussion threads, with author usernames." },
-  { kind: "aggregates", title: "Aggregate results", desc: "Group health ratings and priority rankings — the same thresholded summaries members see. No individual answers." },
+  { kind: "aggregates", title: "Aggregate results", desc: "Health ratings and priority rankings by unit and by segment — the same thresholded summaries shown in the app. No individual answers." },
   { kind: "roadmap", title: "Roadmap actions", desc: "60/90/120-day actions with status, owner and volunteers." },
-  { kind: "participation", title: "Participation statistics", desc: "Per-person counts of named contributions, comments and volunteering." },
+  { kind: "bd", title: "2027 Business Development", desc: "Every client, association and conference across units, with sponsor/owner, dollars, dates and the who/what/why details." },
+  { kind: "participation", title: "Participation statistics", desc: "Per-person business units and counts of named contributions, comments, volunteering and BD items owned." },
 ];
 
 async function run(kind: string, fmt: "csv" | "json") {
@@ -19,6 +20,7 @@ async function run(kind: string, fmt: "csv" | "json") {
     const stamp = new Date().toISOString().slice(0, 10);
     if (fmt === "json") return download(`${kind}-${stamp}.json`, JSON.stringify(data, null, 2), "application/json");
     if (kind === "aggregates") {
+      // Thresholded per-unit and per-segment results only.
       const d = data as { health: Record<string, unknown>[]; priorities: Record<string, unknown>[] };
       download(`health-aggregates-${stamp}.csv`, toCsv(d.health), "text/csv");
       download(`priority-aggregates-${stamp}.csv`, toCsv(d.priorities), "text/csv");

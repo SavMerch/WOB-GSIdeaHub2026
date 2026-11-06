@@ -41,7 +41,13 @@ export class TestDb {
     return this.client.query<T>(sql, params);
   }
 
-  async createUser(username: string, opts: { role?: string; status?: string } = {}) {
+  /** Business unit id by slug. */
+  async unit(slug: string): Promise<string> {
+    const { rows } = await this.sql<{ id: string }>("select id from public.business_units where slug = $1", [slug]);
+    return rows[0].id;
+  }
+
+  async createUser(username: string, opts: { role?: string; status?: string; units?: string[]; allUnits?: boolean } = {}) {
     const { rows } = await this.sql<{ id: string }>(
       "insert into auth.users (email) values ($1) returning id",
       [`${username}@example.test`],
@@ -56,6 +62,13 @@ export class TestDb {
       "insert into public.workspace_memberships (user_id, role, status) values ($1, $2, $3)",
       [id, opts.role ?? "participant", opts.status ?? "active"],
     );
+    if (opts.allUnits) await this.sql("update public.workspace_memberships set all_units = true where user_id = $1", [id]);
+    for (const slug of opts.units ?? ["corporate-solutions"]) {
+      await this.sql(
+        "insert into public.unit_memberships (user_id, unit_id) select $1, id from public.business_units where slug = $2",
+        [id, slug],
+      );
+    }
     return { id };
   }
 

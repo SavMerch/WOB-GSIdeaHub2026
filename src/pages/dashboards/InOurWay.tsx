@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/collab/common";
 import { ContributionBoard } from "@/components/collab/ContributionBoard";
 import { Link } from "react-router";
+import { unitPath, useUnit } from "@/hooks/useUnit";
 
 const D = DASHBOARDS[1];
 
@@ -27,7 +28,8 @@ export default function InOurWay() {
 }
 
 function Overview() {
-  const { data } = useContributions("barriers");
+  const unit = useUnit();
+  const { data } = useContributions(unit.id, "barriers");
   const { data: cats } = useCategories("barriers");
   const live = (data ?? []).filter((c) => !c.archived && !c.hidden);
   if (live.length === 0) return null;
@@ -60,7 +62,7 @@ function Overview() {
               {top.map((c, i) => (
                 <li key={c.id} className="flex items-center gap-3 text-sm">
                   <span className="w-4 text-right text-xs text-muted">{i + 1}</span>
-                  <Link to={`/in-our-way?item=${c.id}`} className="flex-1 hover:underline">{c.title}</Link>
+                  <Link to={`${unitPath(unit.slug, "in-our-way")}?item=${c.id}`} className="flex-1 hover:underline">{c.title}</Link>
                   <span className="text-xs text-muted">{c.resonates_count} resonate{c.top_count ? ` · ${c.top_count} significant` : ""}</span>
                 </li>
               ))}

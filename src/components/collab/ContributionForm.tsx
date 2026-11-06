@@ -4,6 +4,7 @@ import { rpc } from "@/lib/api";
 import { newRequestId } from "@/lib/utils";
 import type { Category, Contribution } from "@/lib/types";
 import { useAction } from "@/hooks/data";
+import { useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Notice, Select, Switch, Textarea } from "@/components/ui/primitives";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -37,6 +38,7 @@ export function ContributionForm({
   editing?: Contribution | null;
   defaultCategoryId?: string;
 }) {
+  const unit = useUnit();
   const [title, setTitle] = React.useState("");
   const [body, setBody] = React.useState("");
   const [categoryId, setCategoryId] = React.useState("");
@@ -62,6 +64,7 @@ export function ContributionForm({
             p_category_id: categoryId || null, p_details: details,
           })
         : rpc("create_contribution", {
+            p_unit_id: unit.id,
             p_board: config.board, p_title: title, p_body: body, p_category_id: categoryId || null,
             p_details: details, p_anonymous: anonymous, p_client_request_id: requestId.current,
           }),

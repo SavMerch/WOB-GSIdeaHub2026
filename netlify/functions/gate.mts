@@ -66,7 +66,9 @@ export default safe(async (req: Request, context: Context) => {
   });
   if (error) throw error;
   await logAuthEvent(svc, { event_type: "invite_code_success", success: true, ip, user_agent: ua });
-  return json({ registrationToken: token, expiresAt: claims.exp * 1000 });
+  // Unit names only, so the account form can ask which unit the person is in.
+  const { data: units } = await svc.from("business_units").select("id, name").eq("active", true).order("sort");
+  return json({ registrationToken: token, expiresAt: claims.exp * 1000, units: units ?? [] });
 });
 
 export const config: Config = { path: "/api/gate" };

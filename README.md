@@ -12,6 +12,31 @@ It's built around five questions — and they're the heart of the app:
 
 Plus a home page (**Where We're Headed**), cross-dashboard links between any issue, idea, or action, live updates and presence, and a full admin area.
 
+### Business units, Executive View, and 2027 planning
+
+The whole exercise runs separately in five business units: **WOB Corporate Solutions, WOB Government Advisory, WOB Emergency Management & Disaster Recovery, WOB Caribe (USVI/PR), and WOB Admin**.
+
+- **Each unit sees only its own content.** Posts, discussions, ratings, the roadmap, and the 2027 plan all belong to one unit. The database refuses reads and writes across units, including over the API and live updates.
+- **Unit picker.** People with access to more than one unit choose where to start after signing in, and can switch from the sidebar. Everyone else goes straight into their unit.
+- **Cross-cutting members.** Turn this on per person in Admin → People. They can see and contribute in every unit, plus the **Executive View**. Administrators always have this access.
+- **Executive View** (`/exec`) rolls everything up as **Corporate Solutions** vs **Government Solutions** (GA, EMDR, Caribe, Admin), with a per-unit breakdown:
+  - participation
+  - health ratings
+  - priorities vs. how well they're provided
+  - most-supported barriers
+  - actions under way
+  - 2027 BD totals
+  - names that appear in more than one unit's plan
+
+  A unit below the privacy threshold is left out of segment totals, so its answers can't be worked out by subtraction.
+- **2027 Business Development** (`/u/<unit>/planning`) has three sheets:
+  - **Clients:** Retain, Grow, Surrender
+  - **Associations:** Member, Sponsor, Partnership
+  - **Conferences:** Attend, Booth, Sponsor
+
+  Add a row inline and choose the category and **sponsor/owner** from dropdowns; priority, status, 2026/2027 dollars, and a key date are editable in place. **Double-click a row** (or press Enter, or click the arrow) to open a detail panel with guided **Who / What / Why / Next steps** questions and a discussion thread. The detail panel detects edit conflicts; saving after someone else's change applies only the fields you edited.
+- **Units are configurable** in Admin → Business Units: rename, move between segments, reorder, or switch off.
+
 ---
 
 ## Contents
@@ -74,7 +99,7 @@ You'll need a Supabase account, a Netlify account, a GitHub account, and Node 20
 Create a new project at supabase.com. From **Project Settings → API**, note the **Project URL**, the **publishable key** (or legacy `anon` key), and the **secret key** (or legacy `service_role` key). Keep the secret key private.
 
 ### 2. Apply the database migrations
-**Option A — SQL editor (simplest):** open **SQL Editor**, then paste and run each file in `supabase/migrations/` **in filename order** (0001 → 0004).
+**Option A — SQL editor (simplest):** open **SQL Editor**, then paste and run each file in `supabase/migrations/` **in filename order** (0001 → 0005).
 
 **Option B — Supabase CLI:**
 ```bash
@@ -105,6 +130,17 @@ SUPABASE_URL=https://xyz.supabase.co SUPABASE_SERVICE_ROLE_KEY=sb_secret_… npm
 select public.bootstrap_first_admin('you@example.com', 'your.username', 'Your Name');
 ```
 `bootstrap_first_admin` refuses to run once any administrator exists, and only the SQL editor or the secret key can call it.
+
+### Upgrading an existing installation to business units
+
+If you already ran 0001–0004:
+
+1. In Supabase → **SQL Editor**, run **`20261106000005_business_units.sql`** once.
+   - Existing content is assigned to **WOB Corporate Solutions**.
+   - Existing members are added to Corporate Solutions.
+   - Existing administrators become cross-cutting.
+2. Push the updated files to GitHub. Netlify redeploys automatically.
+3. Open **Admin → People** and set each person's business unit with the pencil icon. Turn on **Cross-cutting** for the 1–2 people who should see everything.
 
 ### 5. Set the invitation password
 Sign in, go to **Admin → Access & Security → Invitation password**, and set one (8+ characters). You can replace it, set an expiry or maximum uses, or disable it at any time. Only a hash is stored, so it can't be read back, only replaced.
@@ -186,7 +222,7 @@ npm run build             # type-check + production build
 ```
 
 **What the tests cover.**
-- `tests/db/` (47 tests): runs every migration against a real Postgres, with a small shim for Supabase's `auth.uid()` and roles. Each query runs as `anon`, `authenticated`, or `service_role`, exactly as the Supabase API does. Covers acceptance scenarios 1, 2, 4, 5, 6, 8, and 9 at the database level:
+- `tests/db/` (64 tests): runs every migration against a real Postgres, with a small shim for Supabase's `auth.uid()` and roles. Each query runs as `anon`, `authenticated`, or `service_role`, exactly as the Supabase API does. Covers acceptance scenarios 1, 2, 4, 5, 6, 8, and 9 at the database level:
   - unauthenticated access is refused
   - pending users see nothing
   - approval grants access
@@ -204,6 +240,17 @@ npm run build             # type-check + production build
   - registration tokens are single-use
   - rate limiting works
   - the bootstrap function locks after first use
+  - business units:
+    - members can't read, write, react, comment, or link across units
+    - realtime topics are authorized per unit
+    - profiles are limited to shared units
+    - cross-cutting access and the Executive View
+    - only assigned members answer surveys
+    - segment roll-ups exclude units below the threshold
+    - BD rows (category/kind rules, owner must be in the unit, merged detail edits, version conflicts, isolation, comments, delete rights)
+    - overlap detection
+    - BD export
+    - unit assignment on approval
 - `tests/unit/` (21 tests):
   - invitation-code hashing
   - token signing, tampering, and expiry
@@ -245,10 +292,10 @@ These are stated honestly so nobody is surprised:
 ```
 netlify/functions/      gate, register, login, heartbeat, password-reset, admin, purge-logs (scheduled)
 netlify/lib/            shared server helpers (security.ts is pure and unit-tested)
-supabase/migrations/    0001 schema · 0002 functions/RPCs · 0003 grants, RLS, realtime · 0004 defaults
+supabase/migrations/    0001 schema · 0002 functions/RPCs · 0003 grants, RLS, realtime · 0004 defaults · 0005 business units, Executive View, 2027 BD
 supabase/seed-demo.sql  development-only demo data (+ reset-demo.sql)
 scripts/                bootstrap-admin, check-production, test-db
-src/pages/              public auth pages, Home, five dashboards, admin/*
+src/pages/              public auth pages, UnitPicker, Home, five dashboards, Planning (2027 BD), Exec, admin/*
 src/components/         ui/ (component library), layout/, collab/ (boards, cards, discussion, links)
 src/hooks/              auth, realtime (private channel + presence), data queries & mutations
 tests/                  db/ (Postgres authorization) and unit/

@@ -10,6 +10,7 @@ export interface Profile {
 export interface Membership {
   role: Role;
   status: MemberStatus;
+  all_units: boolean;
 }
 
 export interface WorkspaceSettings {
@@ -40,6 +41,7 @@ export interface Category {
 
 export interface Contribution {
   id: string;
+  unit_id: string;
   dashboard: number;
   board: string;
   title: string;
@@ -69,6 +71,7 @@ export interface Comment {
   id: string;
   contribution_id: string | null;
   roadmap_item_id: string | null;
+  bd_item_id: string | null;
   author_id: string | null;
   kind: "comment" | "solution";
   body: string;
@@ -82,6 +85,7 @@ export type RoadmapStatus = "suggested" | "discussing" | "agreed" | "in_progress
 
 export interface RoadmapItem {
   id: string;
+  unit_id: string;
   title: string;
   description: string;
   timeframe: 60 | 90 | 120;
@@ -134,4 +138,30 @@ export interface PrioritySummaryRow {
   experience_respondents: number;
   experience_suppressed: boolean;
   avg_experience: number | null;
+}
+
+export type BdKind = "client" | "association" | "conference";
+
+export interface BdItem {
+  id: string;
+  unit_id: string;
+  kind: BdKind;
+  category: string;
+  name: string;
+  owner_id: string | null;
+  status: "proposed" | "committed" | "in_progress" | "done" | "dropped";
+  priority: "high" | "medium" | "low";
+  value_2026: number | null;
+  value_2027: number | null;
+  key_date: string | null;
+  details: Record<string, string>;
+  created_by: string | null;
+  updated_by: string | null;
+  comment_count: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  owner?: { username: string } | null;
+  creator?: { username: string } | null;
+  editor?: { username: string } | null;
 }

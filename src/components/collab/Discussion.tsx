@@ -8,6 +8,7 @@ import { dashboardByN, itemHref } from "@/lib/dashboards";
 import { cn, newRequestId, timeAgo } from "@/lib/utils";
 import { useAction, useComments, useRelated } from "@/hooks/data";
 import { useAuth } from "@/hooks/useAuth";
+import { useUnit } from "@/hooks/useUnit";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/primitives";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
@@ -17,10 +18,10 @@ import { StatusBadge } from "./common";
 // Comment thread (append-only; authors can edit/remove their own)
 // ---------------------------------------------------------------------
 export function CommentThread({
-  contributionId, roadmapId, allowSolutions = false,
-}: { contributionId?: string; roadmapId?: string; allowSolutions?: boolean }) {
+  contributionId, roadmapId, bdItemId, allowSolutions = false, placeholder,
+}: { contributionId?: string; roadmapId?: string; bdItemId?: string; allowSolutions?: boolean; placeholder?: string }) {
   const { profile, canContribute, isAdmin } = useAuth();
-  const { data: comments, isLoading } = useComments({ contributionId, roadmapId });
+  const { data: comments, isLoading } = useComments({ contributionId, roadmapId, bdItemId });
   const [body, setBody] = React.useState("");
   const [kind, setKind] = React.useState<"comment" | "solution">("comment");
   const requestId = React.useRef(newRequestId());
@@ -28,16 +29,16 @@ export function CommentThread({
 
   const add = useAction(
     () => rpc("add_comment", {
-      p_contribution_id: contributionId ?? null, p_roadmap_item_id: roadmapId ?? null,
+      p_contribution_id: contributionId ?? null, p_roadmap_item_id: roadmapId ?? null, p_bd_item_id: bdItemId ?? null,
       p_body: body, p_kind: kind, p_client_request_id: requestId.current,
     }),
-    { invalidate: [["comments", contributionId ?? roadmapId ?? ""]], retry: true },
+    { invalidate: [["comments", contributionId ?? roadmapId ?? bdItemId ?? ""]], retry: true },
   );
   const edit = useAction((v: { id: string; body: string }) => rpc("edit_comment", { p_id: v.id, p_body: v.body }), {
-    invalidate: [["comments", contributionId ?? roadmapId ?? ""]],
+    invalidate: [["comments", contributionId ?? roadmapId ?? bdItemId ?? ""]],
   });
   const del = useAction((id: string) => rpc("delete_comment", { p_id: id }), {
-    success: "Comment removed", invalidate: [["comments", contributionId ?? roadmapId ?? ""]],
+    success: "Comment removed", invalidate: [["comments", contributionId ?? roadmapId ?? bdItemId ?? ""]],
   });
 
   const submit = (e: React.FormEvent) => {
@@ -108,12 +109,12 @@ export function CommentThread({
 
       {canContribute && (
         <form onSubmit={submit} className="flex flex-col gap-2">
-          <label className="sr-only" htmlFor={`c-${contributionId ?? roadmapId}`}>Add a comment</label>
+          <label className="sr-only" htmlFor={`c-${contributionId ?? roadmapId ?? bdItemId}`}>Add a comment</label>
           <Textarea
-            id={`c-${contributionId ?? roadmapId}`}
+            id={`c-${contributionId ?? roadmapId ?? bdItemId}`}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder={kind === "solution" ? "What might help?" : "Add a comment…"}
+            placeholder={kind === "solution" ? "What might help?" : placeholder ?? "Add a comment…"}
             maxLength={4000}
             className="min-h-[64px]"
           />
@@ -137,6 +138,7 @@ export function CommentThread({
 // Related items across dashboards
 // ---------------------------------------------------------------------
 export function RelatedItems({ kind, id }: { kind: "contribution" | "roadmap"; id: string }) {
+  const unit = useUnit();
   const { profile, canContribute, isAdmin } = useAuth();
   const { data } = useRelated(kind, id);
   const [open, setOpen] = React.useState(false);
@@ -159,7 +161,7 @@ export function RelatedItems({ kind, id }: { kind: "contribution" | "roadmap"; i
             return (
               <li key={r.link_id} className="flex items-center gap-2 text-sm">
                 <span className={cn("grid size-5 shrink-0 place-items-center rounded text-[10px] font-semibold", d.accent.soft, d.accent.text)}>{d.n}</span>
-                <Link to={itemHref(r.kind, r.id, r.board, r.dashboard)} className="min-w-0 flex-1 truncate text-ink hover:underline">
+                <Link to={itemHref(unit.slug, r.kind, r.id, r.board, r.dashboard)} className="min-w-0 flex-1 truncate text-ink hover:underline">
                   {r.title}
                 </Link>
                 <StatusBadge status={r.status} />
@@ -181,14 +183,15 @@ export function RelatedItems({ kind, id }: { kind: "contribution" | "roadmap"; i
 }
 
 function LinkDialog({ open, onOpenChange, from }: { open: boolean; onOpenChange: (o: boolean) => void; from: { kind: "contribution" | "roadmap"; id: string } }) {
+  const unit = useUnit();
   const [q, setQ] = React.useState("");
   const { data } = useQuery({
-    queryKey: ["link-candidates"],
+    queryKey: ["link-candidates", unit.id],
     enabled: open,
     queryFn: async () => {
       const [c, r] = await Promise.all([
-        supabase.from("contributions").select("id, title, board, dashboard").eq("hidden", false).order("created_at", { ascending: false }).limit(400),
-        supabase.from("roadmap_items").select("id, title").eq("hidden", false).order("created_at", { ascending: false }).limit(200),
+        supabase.from("contributions").select("id, title, board, dashboard").eq("unit_id", unit.id).eq("hidden", false).order("created_at", { ascending: false }).limit(400),
+        supabase.from("roadmap_items").select("id, title").eq("unit_id", unit.id).eq("hidden", false).order("created_at", { ascending: false }).limit(200),
       ]);
       return [
         ...(unwrap(c) as { id: string; title: string; board: string; dashboard: number }[]).map((x) => ({ ...x, kind: "contribution" as const })),
@@ -204,7 +207,7 @@ function LinkDialog({ open, onOpenChange, from }: { open: boolean; onOpenChange:
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader title="Connect to something related" description="Link this to an issue, idea, or next step on any dashboard. Both keep their own discussion." />
+        <DialogHeader title="Connect to something related" description="Link this to an issue, idea, or next step on any dashboard in this business unit. Both keep their own discussion." />
         <Input autoFocus placeholder="Search by title…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
         <ul className="mt-3 flex max-h-80 flex-col gap-1 overflow-y-auto">
           {items.map((x) => {

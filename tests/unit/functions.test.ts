@@ -8,6 +8,8 @@ function fakeSupabase() {
     const q: any = {
       _table: table,
       select: () => q, eq: () => q, ilike: () => q, neq: () => q, order: () => q, limit: () => q,
+      in: () => q,
+      then: (resolve: any) => resolve({ data: state.tables[table] ?? [], error: null }),
       single: async () => ({ data: state.tables[table]?.[0] ?? null, error: null }),
       maybeSingle: async () => ({ data: state.tables[table]?.[0] ?? null, error: null }),
       insert: async (row: any) => { (state.inserts[table] ??= []).push(row); return { error: null }; },
@@ -62,6 +64,7 @@ beforeEach(async () => {
   state.memberStatus = "active";
   state.tables = {
     workspace_settings: [{ registration_open: true, invitation_code_enabled: true }],
+    business_units: [{ id: "u1", name: "WOB Caribe (USVI/PR)" }],
     invitation_codes: [{ id: "c1", code_hash: await hashSecret("Open-Sesame-26"), expires_at: null, max_uses: null, use_count: 0 }],
   };
 });
@@ -82,6 +85,7 @@ describe("gate function", () => {
     const claims = verifyRegistrationToken(process.env.REGISTRATION_TOKEN_SECRET!, body.registrationToken);
     expect(claims).not.toBeNull();
     expect(state.inserts.registration_tokens[0].jti).toBe(claims!.jti);
+    expect(body.units).toEqual([{ id: "u1", name: "WOB Caribe (USVI/PR)" }]);
   });
   it("refuses when registration is closed, even with the right code", async () => {
     state.tables.workspace_settings = [{ registration_open: false, invitation_code_enabled: true }];

@@ -10,7 +10,8 @@ import { EVENT_LABEL, StatTile, useAuthEvents } from "./shared";
 interface OverviewData {
   total_users: number; active_users: number; online_now: number; pending: number; suspended: number;
   contributions_by_dashboard: Record<string, number>; contributions_last_7_days: number; comments_last_7_days: number;
-  failed_logins_24h: number; unusual_24h: number; open_reports: number;
+  failed_logins_24h: number; unusual_24h: number; open_reports: number; unassigned: number;
+  by_unit: { name: string; members: number; contributions: number; bd_items: number }[];
 }
 
 export function Overview() {
@@ -35,9 +36,28 @@ export function Overview() {
         <StatTile label="Unusual sign-ins (24h)" value={d?.unusual_24h} tone={d?.unusual_24h ? "danger" : undefined} />
       </div>
       {d?.pending ? <p className="text-sm"><Link className="font-medium text-brand hover:underline" to="/admin/people">Review {d.pending} pending request{d.pending > 1 ? "s" : ""} →</Link></p> : null}
+      {d?.unassigned ? <p className="text-sm"><Link className="font-medium text-brand hover:underline" to="/admin/people">{d.unassigned} active {d.unassigned > 1 ? "people need" : "person needs"} a business unit →</Link></p> : null}
       {d?.open_reports ? <p className="text-sm"><Link className="font-medium text-brand hover:underline" to="/admin/content">{d.open_reports} open content report{d.open_reports > 1 ? "s" : ""} →</Link></p> : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>By business unit</CardTitle></CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-xs text-muted"><th className="py-1 font-medium">Unit</th><th className="py-1 text-right font-medium">Members</th><th className="py-1 text-right font-medium">Posts</th><th className="py-1 text-right font-medium">BD rows</th></tr></thead>
+              <tbody>
+                {(d?.by_unit ?? []).map((u) => (
+                  <tr key={u.name} className="border-t border-line">
+                    <td className="py-1.5">{u.name}</td>
+                    <td className="py-1.5 text-right tabular-nums">{u.members}</td>
+                    <td className="py-1.5 text-right tabular-nums">{u.contributions}</td>
+                    <td className="py-1.5 text-right tabular-nums">{u.bd_items}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader><CardTitle>Contributions by dashboard</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-2">

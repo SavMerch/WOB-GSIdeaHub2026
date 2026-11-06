@@ -102,6 +102,13 @@ export default safe(async (req: Request, _context: Context) => {
       const username = typeof body.username === "string" ? body.username.trim() : "";
       const displayName = typeof body.displayName === "string" ? body.displayName.trim().slice(0, 80) : "";
       const role = typeof body.role === "string" && ROLES.has(body.role) ? body.role : "participant";
+      const allUnits = body.allUnits === true;
+      const unitIds = Array.isArray(body.unitIds) ? body.unitIds.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
+      if (!allUnits && unitIds.length === 0) return fail(400, "Choose at least one business unit, or make them cross-cutting.");
+      if (unitIds.length) {
+        const { data: found } = await svc.from("business_units").select("id").in("id", unitIds);
+        if ((found ?? []).length !== unitIds.length) return fail(400, "Unknown business unit.");
+      }
       if (!EMAIL_RE.test(email)) return fail(400, "Enter a valid email address.");
       if (!USERNAME_RE.test(username)) return fail(400, "Usernames are 3–32 letters, numbers, dots, dashes, or underscores.");
       if (!displayName) return fail(400, "Enter a display name.");
@@ -138,12 +145,16 @@ export default safe(async (req: Request, _context: Context) => {
       await svc.from("workspace_memberships").insert({
         user_id: userId,
         role,
+        all_units: allUnits,
         status: "active",
         approved_by: adminId,
         approved_at: new Date().toISOString(),
       });
-      await svc.from("invitations").insert({ email, role, user_id: userId, invited_by: adminId, status: "accepted" });
-      await audit(`member.${body.action}`, "user", userId, { role });
+      if (unitIds.length) {
+        await svc.from("unit_memberships").insert(unitIds.map((unit_id) => ({ user_id: userId, unit_id })));
+      }
+      await svc.from("invitations").insert({ email, role, unit_ids: unitIds, user_id: userId, invited_by: adminId, status: "accepted" });
+      await audit(`member.${body.action}`, "user", userId, { role, unit_ids: unitIds, all_units: allUnits });
       return json({ ok: true, userId, setupLink });
     }
     default:
